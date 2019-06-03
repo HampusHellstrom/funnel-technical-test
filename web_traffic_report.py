@@ -28,7 +28,7 @@ def main(test_inputs=None):
             -to <Date>              - To which date log entries shall be included. Default is the end of log.
             -delim <Delimiter>      - If the CSV file has a different delimiter. Default is ','
             -report_name <FileName> - Basic repot output file name. If omitted report will not be saved.
-            -quiet                  - If the script should print anything
+            -quiet                  - Surpresses all printouts
             """)
         return
 
