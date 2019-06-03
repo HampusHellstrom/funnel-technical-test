@@ -10,7 +10,7 @@ packages outside the Python Standard Library
 ### Running the script <br/>
 Running the script via the python interpretor:
 
-`\>\> python web_traffic_report.py <log_file_path> [-from <Date>] [-to <Date>] [-delim <Delimiter>]`
+`>> python web_traffic_report.py <log_file_path> [-from <Date>] [-to <Date>] [-delim <Delimiter>]`
 
 #### Inputs<br/>
 `<log_file_path>`        
@@ -31,6 +31,6 @@ Running the script via the python interpretor:
 ### Testing<br/>
 The tests are written in the file test.py which can be run by:
 
-`\>\> python test.py <br/>`
+`>> python test.py <br/>`
 
 The tests creates a fake log called `fake_log_{i}.csv` where i is is the first number for which the file does not exist, if it fails the first 100 times it will give up and raise a Runtime Error.
