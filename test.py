@@ -4,7 +4,7 @@ import csv
 from datetime import datetime
 
 # Import
-import web_traffic_report as wtr
+from web_traffic_report import BasicWebReport, main
 
 
 fake_log = [
@@ -24,22 +24,24 @@ fake_log = [
     ["2013-09-05 11:00:00UTC", "/contact.html", "12345"],
 ]
 
-for i in range(100):
-    fake_log_name = f"fake_log_{i}.csv"
-    if not os.path.exists(fake_log_name):
-        break
-else:
-    raise RuntimeError("Could not crate a fake log")
-
 
 class TestBasicReport(unittest.TestCase):
+
+    def __init__(self, *arg):
+        super(TestBasicReport, self).__init__(*arg)
+        for i in range(100):
+            self.fake_log_name = f"fake_log_{i}.csv"
+            if not os.path.exists(self.fake_log_name):
+                break
+        else:
+            raise RuntimeError("Could not crate a fake log")
 
     def setUp(self):
         """
         Create a fake log to do the tests on
         """
         header = ["timestamp", "url", "userid"]
-        with open(fake_log_name, "w", newline='') as f:
+        with open(self.fake_log_name, "w", newline='') as f:
             csv_writer = csv.writer(f)
             csv_writer.writerow(header)
             csv_writer.writerows(fake_log)
@@ -48,7 +50,7 @@ class TestBasicReport(unittest.TestCase):
         """
         Remove the fake log
         """
-        os.remove(fake_log_name)
+        os.remove(self.fake_log_name)
 
     def test_inputs(self):
         """
@@ -56,15 +58,15 @@ class TestBasicReport(unittest.TestCase):
         raised if the input if incorrect
         """
         with self.assertRaises(KeyError):
-            wtr.main(["-from", "2013-09-01 09:00:01"])  # Expects log path to be first
+            main(["-from", "2013-09-01 09:00:01"])  # Expects log path to be first
         with self.assertRaises(ValueError):
-            wtr.main([fake_log_name, "-from", "2013-09-01 09:00:xx"])  # Incorrect date format
+            main([self.fake_log_name, "-from", "2013-09-01 09:00:xx"])  # Incorrect date format
         with self.assertRaises(KeyError):
-            wtr.main([fake_log_name, "-randomtag"])  # Unknown tag
+            main([self.fake_log_name, "-randomtag"])  # Unknown tag
         with self.assertRaises(StopIteration):
-            wtr.main([fake_log_name, "-from"])  # Missing argument, date has to follow the "-from" tag
+            main([self.fake_log_name, "-from"])  # Missing argument, date has to follow the "-from" tag
         with self.assertRaises(FileNotFoundError):
-            wtr.main(["non_existing_file.csv"])  # Non existing file
+            main(["non_existing_file.csv"])  # Non existing file
 
     def test_log_entry_retriever(self):
         """
@@ -74,7 +76,9 @@ class TestBasicReport(unittest.TestCase):
         """
         n_rows = 0
         n_expected_rows = len(fake_log)
-        for (url_actual, userid_actual), (_, url_expected, userid_expected) in zip(wtr.LogEntries(fake_log_name), fake_log):
+        bwr = BasicWebReport(self.fake_log_name)
+
+        for (url_actual, userid_actual), (_, url_expected, userid_expected) in zip(bwr.LogEntries(), fake_log):
             n_rows += 1
             self.assertEqual(url_actual, url_expected)
             self.assertEqual(userid_actual, userid_expected)
@@ -90,10 +94,11 @@ class TestBasicReport(unittest.TestCase):
         fake_log_partition = fake_log[2:6]
         n_expected_rows = len(fake_log_partition)
 
-        from_date = datetime(2013, 9, 1, 9, 30, 00)
-        to_date = datetime(2013, 9, 1, 10, 0, 00)
+        bwr = BasicWebReport(self.fake_log_name)
+        bwr.from_date = datetime(2013, 9, 1, 9, 30, 00)
+        bwr.to_date = datetime(2013, 9, 1, 10, 0, 00)
 
-        for (url_actual, userid_actual), (_, url_expected, userid_expected) in zip(wtr.LogEntries(fake_log_name, from_date, to_date), fake_log_partition):
+        for (url_actual, userid_actual), (_, url_expected, userid_expected) in zip(bwr.LogEntries(), fake_log_partition):
             n_rows += 1
             self.assertEqual(url_actual, url_expected)
             self.assertEqual(userid_actual, userid_expected)
@@ -104,8 +109,8 @@ class TestBasicReport(unittest.TestCase):
         Verifies that the number of uniques user and the
         number of webviews. this uses the whole log file.
         """
-
-        report = wtr.GetBasicReport(fake_log_name, report_file_name=None)
+        bwr = BasicWebReport(self.fake_log_name)
+        report = bwr.GetBasicReport()
 
         for url, web_views, unique_users in report:
             expected_unique_user = len(set([userid_fake_log for _, url_fake_log, userid_fake_log in fake_log if url == url_fake_log]))
@@ -121,14 +126,15 @@ class TestBasicReport(unittest.TestCase):
         function "LogEntries" is working properly
         """
 
-        from_date = datetime(2013, 9, 1, 9, 30, 00)
-        to_date = datetime(2013, 9, 1, 10, 0, 00)
+        bwr_1 = BasicWebReport(self.fake_log_name)
+        bwr_1.from_date = datetime(2013, 9, 1, 9, 30, 00)
+        bwr_1.to_date = datetime(2013, 9, 1, 10, 0, 00)
 
         expected_unique_userids = {}
         expected_web_views = {}
 
         # As log as previous test are passing LogEntries is assumed to be working as intended
-        for url, userid in wtr.LogEntries(fake_log_name, from_date, to_date):
+        for url, userid in bwr_1.LogEntries():
             if url not in expected_unique_userids and url not in expected_web_views:
                 expected_unique_userids[url] = set()
                 expected_web_views[url] = 0
@@ -138,7 +144,11 @@ class TestBasicReport(unittest.TestCase):
 
         expected_unique_user = {url: len(unique_userid_set) for url, unique_userid_set in expected_unique_userids.items()}
 
-        report = wtr.GetBasicReport(fake_log_name, from_date=from_date, to_date=to_date, report_file_name=None)
+        bwr_2 = BasicWebReport(self.fake_log_name)
+        bwr_2.from_date = datetime(2013, 9, 1, 9, 30, 00)
+        bwr_2.to_date = datetime(2013, 9, 1, 10, 0, 00)
+
+        report = bwr_2.GetBasicReport()
         for url, web_views, unique_users in report:
             self.assertEqual(unique_users, expected_unique_user[url])
             self.assertEqual(web_views, expected_web_views[url])
@@ -149,20 +159,13 @@ class TestBasicReport(unittest.TestCase):
         the same results.
         """
 
-        from_date = datetime(2013, 9, 1, 9, 30, 00)
-        to_date = datetime(2013, 9, 1, 10, 0, 00)
+        bwr = BasicWebReport(self.fake_log_name)
+        bwr.from_date = datetime(2013, 9, 1, 9, 30, 00)
+        bwr.to_date = datetime(2013, 9, 1, 10, 0, 00)
 
-        main_report = wtr.main([fake_log_name, "-from", str(from_date), "-to", str(to_date)])
-        get_basic_report = wtr.GetBasicReport(fake_log_name, from_date=from_date, to_date=to_date, report_file_name=None)
+        main_report = main([self.fake_log_name, "-from", str(bwr.from_date), "-to", str(bwr.to_date)])
+        get_basic_report = bwr.GetBasicReport()
         self.assertEqual(main_report, get_basic_report)
-
-    def test_output_file(self):
-        """
-        Verifies that the number of uniques user and the
-        number of webviews. this uses the whole log file.
-        """
-
-        report = wtr.GetBasicReport(fake_log_name, report_file_name="test_output.csv")
 
 
 if __name__ == "__main__":

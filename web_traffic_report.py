@@ -3,7 +3,6 @@ import csv
 import sys
 
 # Log file settings
-DATE_FORMAT = "%Y-%m-%d %H:%M:%SUTC"
 
 
 def main(test_inputs=None):
@@ -29,93 +28,107 @@ def main(test_inputs=None):
             -to <Date>              - To which date log entries shall be included. Default is the end of log.
             -delim <Delimiter>      - If the CSV file has a different delimiter. Default is ','
             -report_name <FileName> - Basic repot output file name. If omitted report will not be saved.
-
+            -quiet                  - If the script should print anything
             """)
         return
 
-    # Set default values
-    from_date = None
-    to_date = None
-    report_file_name = None
-    delimiter = ","
+    bwr = BasicWebReport(log_path=log_path)
 
     # Iterate over the remaining arguments
     argument = next(inputs, None)
     while argument is not None:
         if argument.lower() == "-from":
-            from_date = datetime.strptime(next(inputs), "%Y-%m-%d %H:%M:%S")
+            bwr.from_date = datetime.strptime(next(inputs), "%Y-%m-%d %H:%M:%S")
         elif argument.lower() == "-to":
-            to_date = datetime.strptime(next(inputs), "%Y-%m-%d %H:%M:%S")
+            bwr.to_date = datetime.strptime(next(inputs), "%Y-%m-%d %H:%M:%S")
         elif argument.lower() == "-delim":
-            delimiter = next(inputs)
+            bwr.delimiter = next(inputs)
         elif argument.lower() == "-report_name":
-            report_file_name = next(inputs)
+            bwr.report_file_name = next(inputs)
+        elif argument.lower() == "-quiet":
+            bwr.verbose = False
         else:
             raise KeyError("Unknown paramter, allowed arguments are: -from, -to, -delim")
         argument = next(inputs, None)
 
-    return GetBasicReport(log_path, from_date, to_date, report_file_name, delimiter)
+    return bwr.GetBasicReport()
 
 
-def LogEntries(log_path, from_date=None, to_date=None, delimiter=","):
+class BasicWebReport(object):
 
-    with open(log_path) as f:
-        reader = csv.reader(f, delimiter=delimiter)
-        header = [tmp.strip() for tmp in next(reader)]  # Remove and clean header
+    def __init__(self, log_path, from_date=None, to_date=None, report_file_name=None, delimiter=",", verbose=True):
+        self.log_path = log_path
+        self.from_date = from_date
+        self.to_date = to_date
+        self.delimiter = delimiter
+        self.verbose = verbose
+        if report_file_name is not None and not report_file_name.endswith(".csv") and "." not in report_file_name:
+            self.report_file_name = report_file_name + ".csv"
+        else:
+            self.report_file_name = report_file_name
 
-        for row in reader:
+        # Constants
+        self.DATE_FORMAT = "%Y-%m-%d %H:%M:%SUTC"
 
-            temp_dict = {key: value for key, value in zip(header, row) if key}
+    def LogEntries(self):
+        print(self.log_path)
+        with open(self.log_path) as f:
+            reader = csv.reader(f, delimiter=self.delimiter)
+            header = [tmp.strip() for tmp in next(reader)]  # Remove and clean header
 
-            # Clean data
-            timestamp = datetime.strptime(temp_dict["timestamp"].strip(), DATE_FORMAT)
-            url = temp_dict["url"].strip()
-            userid = temp_dict["userid"].strip()
+            for row in reader:
 
-            # Yield data if it within the specified dates
-            if from_date is None or timestamp >= from_date:
-                if to_date is None or timestamp <= to_date:
-                    yield url, userid
-                else:
-                    break
+                temp_dict = {key: value for key, value in zip(header, row) if key}
 
+                # Clean data
+                timestamp = datetime.strptime(temp_dict["timestamp"].strip(), self.DATE_FORMAT)
+                url = temp_dict["url"].strip()
+                userid = temp_dict["userid"].strip()
 
-def GetBasicReport(log_path, from_date=None, to_date=None, report_file_name=None, delimiter=","):
-    header = ("url", "page_views", "userids")
+                # Yield data if it within the specified dates
+                if self.from_date is None or timestamp >= self.from_date:
+                    if self.to_date is None or timestamp <= self.to_date:
+                        yield url, userid
+                    else:
+                        break
 
-    urls_stats = {}
-    for url, userid in LogEntries(log_path, from_date, to_date, delimiter):
-        if url not in urls_stats:
-            urls_stats[url] = {"unique_users": set(),
-                               "page_views": 0}
+    def GetBasicReport(self):
+        """
+        Loop through the logs entries that are within
+        the specified dates
+        """
+        urls_stats = {}
+        for url, userid in self.LogEntries():
+            if url not in urls_stats:
+                urls_stats[url] = {"unique_users": set(),
+                                   "page_views": 0}
 
-        urls_stats[url]["unique_users"].add(userid)
-        urls_stats[url]["page_views"] += 1
+            urls_stats[url]["unique_users"].add(userid)
+            urls_stats[url]["page_views"] += 1
 
-    # Generate report
-    report = []
-    for url, stats in urls_stats.items():
-        page_views = stats["page_views"]
-        userids = len(stats["unique_users"])
-        report.append((url, page_views, userids))
+        # Generate report
+        report = []
+        for url, stats in urls_stats.items():
+            page_views = stats["page_views"]
+            userids = len(stats["unique_users"])
+            report.append((url, page_views, userids))
 
-    # If output file name has not been specified return t
-    if report_file_name is None:
-        print("{:20}{:>15}{:>15}".format(*header))
-        for row in report:
-            print("{:20}{:15}{:15}".format(*row))
+        self.OutputReport(report)
         return report
-    else:
-        SaveReport(report, report_file_name)
 
+    def OutputReport(self, report):
+        """Save and/or print the report"""
+        if self.verbose:
+            header = ("url", "page_views", "userids")
+            print("{:20}{:>15}{:>15}".format(*header))
+            for row in report:
+                print("{:20}{:15}{:15}".format(*row))
 
-def SaveReport(report, report_file_name):
-    if not report_file_name.endswith(".csv") or "." not in report_file_name:
-        report_file_name += ".csv"
-    with open(report_file_name, 'w', newline="") as f:
-        wr = csv.writer(f)
-        wr.writerow(["url", "page_views", "userids"])  # Write header
-        wr.writerows(report)
+        if self.report_file_name:
+            with open(self.report_file_name, 'w', newline="") as f:
+                wr = csv.writer(f)
+                wr.writerow(["url", "page_views", "userids"])  # Write header
+                wr.writerows(report)
 
 
 if __name__ == '__main__':
